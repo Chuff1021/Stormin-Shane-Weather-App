@@ -6,3 +6,8 @@ build/
 Config/Secrets.xcconfig
 .swiftpm/
 StorminShaneWeather.xcodeproj/
+
+node_modules/
+.next/
+out/
+.vercel/
