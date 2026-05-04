@@ -1,14 +1,7 @@
 .DS_Store
-*.xcuserstate
-xcuserdata/
-DerivedData/
-build/
-Config/Secrets.xcconfig
-.swiftpm/
-StorminShaneWeather.xcodeproj/
-
 node_modules/
 .next/
 out/
 .vercel/
-.vercel
+*.log
+.env*.local
