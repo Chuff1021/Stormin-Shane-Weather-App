@@ -1,90 +1,48 @@
-import { AlertTriangle, Bell, CloudLightning, Compass, Droplets, Eye, Gauge, Map, Moon, Play, Radio, ShieldAlert, Sun, Tornado, Video, Wind } from 'lucide-react';
+'use client';
 
-const hours = [
-  ['Now', '72°', '55%', '⛈'],
-  ['5 PM', '71°', '70%', '🌧'],
-  ['6 PM', '69°', '82%', '⛈'],
-  ['7 PM', '67°', '48%', '🌦'],
-  ['8 PM', '65°', '20%', '☁️'],
-];
+import { useEffect, useState } from 'react';
+import { AlertTriangle, Bell, CloudLightning, Compass, Droplets, Home, Loader2, LocateFixed, Map, Moon, Radio, RefreshCw, Search, Settings, Sun, Thermometer, Tornado, Video, Wind } from 'lucide-react';
 
-const days = [
-  ['Today', 'Strong storms', '78°', '61°'],
-  ['Tue', 'Showers', '70°', '55°'],
-  ['Wed', 'Partly cloudy', '73°', '52°'],
-  ['Thu', 'Sunny', '76°', '54°'],
-  ['Fri', 'Storm chance', '79°', '63°'],
-];
+type Tab = 'home' | 'radar' | 'tornado' | 'shane' | 'settings';
+type Weather = { location: string; temp: number; feels: number; high: number; low: number; condition: string; code: number; wind: number; humidity: number; dew: number; pressure: number; visibility: number; hourly: { time: string; temp: number; pop: number; code: number }[]; daily: { day: string; high: number; low: number; code: number; precip: number }[]; alerts: { title: string; severity: string; expires: string }[]; lat: number; lon: number; };
 
-const metrics = [
-  ['Wind', '18 mph SW', Wind],
-  ['Humidity', '68%', Droplets],
-  ['Dew Point', '61°', Gauge],
-  ['Visibility', '9 mi', Eye],
-  ['UV Index', 'Moderate', Sun],
-  ['Moon', 'Waxing', Moon],
-];
+const fallback: Weather = { location: 'Columbus, Ohio', temp: 72, feels: 74, high: 78, low: 61, condition: 'Storms Developing', code: 95, wind: 18, humidity: 68, dew: 61, pressure: 1010, visibility: 9, hourly: [['Now',72,55,95],['5 PM',71,70,61],['6 PM',69,82,95],['7 PM',67,48,80],['8 PM',65,20,3],['9 PM',64,10,2]].map(([time,temp,pop,code]) => ({time: String(time), temp: Number(temp), pop: Number(pop), code: Number(code)})), daily: ['Today','Tue','Wed','Thu','Fri','Sat','Sun'].map((day, i) => ({ day, high: 78 - i, low: 61 - i, code: i === 0 ? 95 : i === 1 ? 61 : 2, precip: i < 2 ? 70 : 20 })), alerts: [{ title: 'Severe Thunderstorm Watch', severity: 'Moderate', expires: 'Until 9:00 PM' }], lat: 39.9612, lon: -82.9988 };
 
-export default function Page() {
-  return (
-    <main className="shell">
-      <section className="phone" aria-label="Stormin Shane app preview">
-        <div className="storm-bg" />
-        <header className="topbar">
-          <div>
-            <p className="eyebrow">Live storm desk</p>
-            <h1>Stormin&apos; Shane</h1>
-          </div>
-          <div className="logo"><CloudLightning size={28} /></div>
-        </header>
+function describe(code: number) { if ([95,96,99].includes(code)) return 'Thunderstorms'; if ([80,81,82,61,63,65].includes(code)) return 'Rain Showers'; if ([71,73,75,77,85,86].includes(code)) return 'Snow'; if ([45,48].includes(code)) return 'Fog'; if (code === 0) return 'Clear'; if ([1,2].includes(code)) return 'Partly Cloudy'; return 'Cloudy'; }
+function icon(code: number) { if ([95,96,99].includes(code)) return '⛈'; if ([80,81,82,61,63,65].includes(code)) return '🌧'; if ([71,73,75,77,85,86].includes(code)) return '❄️'; if (code === 0) return '☀️'; if ([1,2].includes(code)) return '🌤'; return '☁️'; }
+function dayName(s: string, i: number) { return i === 0 ? 'Today' : new Date(s + 'T12:00:00').toLocaleDateString([], { weekday: 'short' }); }
 
-        <div className="alert"><AlertTriangle size={20} /><div><b>Severe Thunderstorm Watch</b><span>Until 9:00 PM • Tap for timing</span></div></div>
+export default function App() {
+  const [tab, setTab] = useState<Tab>('home');
+  const [weather, setWeather] = useState<Weather>(fallback);
+  const [loading, setLoading] = useState(false);
+  const [query, setQuery] = useState('');
+  const [installHint, setInstallHint] = useState(false);
 
-        <section className="hero card">
-          <div>
-            <p className="location">Columbus, Ohio</p>
-            <div className="temp">72°</div>
-            <h2>Storms Developing</h2>
-            <p>Feels like 74° • H:78° L:61°</p>
-          </div>
-          <div className="weather-mark"><CloudLightning size={74} /></div>
-        </section>
+  useEffect(() => { if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {}); setInstallHint(/iphone|ipad/i.test(navigator.userAgent) && !matchMedia('(display-mode: standalone)').matches); locate(); }, []);
 
-        <section className="hourly">
-          {hours.map(([time, temp, pop, icon]) => <div className="hour card" key={time}><span>{time}</span><strong>{icon}</strong><b>{temp}</b><i style={{height: pop}} /></div>)}
-        </section>
+  async function load(lat: number, lon: number, label = 'Current Location') {
+    setLoading(true);
+    try {
+      const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m,relative_humidity_2m,dew_point_2m,surface_pressure,visibility&hourly=temperature_2m,precipitation_probability,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=auto&forecast_days=10`;
+      const data = await fetch(url).then(r => r.json());
+      const current = data.current;
+      const hourly = data.hourly.time.slice(0, 24).filter((_: string, i: number) => i % 3 === 0).slice(0, 8).map((time: string, idx: number) => ({ time: idx === 0 ? 'Now' : new Date(time).toLocaleTimeString([], { hour: 'numeric' }), temp: Math.round(data.hourly.temperature_2m[idx * 3]), pop: data.hourly.precipitation_probability[idx * 3] ?? 0, code: data.hourly.weather_code[idx * 3] ?? current.weather_code }));
+      const daily = data.daily.time.map((d: string, i: number) => ({ day: dayName(d, i), high: Math.round(data.daily.temperature_2m_max[i]), low: Math.round(data.daily.temperature_2m_min[i]), code: data.daily.weather_code[i], precip: data.daily.precipitation_probability_max[i] ?? 0 }));
+      let alerts: Weather['alerts'] = [];
+      try { const nws = await fetch(`https://api.weather.gov/alerts/active?point=${lat},${lon}`).then(r => r.ok ? r.json() : null); alerts = (nws?.features || []).slice(0, 3).map((f: any) => ({ title: f.properties.event, severity: f.properties.severity, expires: f.properties.expires ? new Date(f.properties.expires).toLocaleString([], { hour: 'numeric', minute: '2-digit' }) : 'Active' })); } catch {}
+      setWeather({ location: label, temp: Math.round(current.temperature_2m), feels: Math.round(current.apparent_temperature), high: daily[0].high, low: daily[0].low, condition: describe(current.weather_code), code: current.weather_code, wind: Math.round(current.wind_speed_10m), humidity: current.relative_humidity_2m, dew: Math.round(current.dew_point_2m), pressure: Math.round(current.surface_pressure), visibility: Math.round((current.visibility || 0) / 1609), hourly, daily, alerts, lat, lon });
+    } finally { setLoading(false); }
+  }
+  function locate() { navigator.geolocation?.getCurrentPosition(p => load(p.coords.latitude, p.coords.longitude), () => load(fallback.lat, fallback.lon, fallback.location), { enableHighAccuracy: true, timeout: 8000 }); }
+  async function search(e: React.FormEvent) { e.preventDefault(); if (!query.trim()) return; const g = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query)}&count=1&language=en&format=json`).then(r => r.json()); const hit = g.results?.[0]; if (hit) load(hit.latitude, hit.longitude, `${hit.name}${hit.admin1 ? ', ' + hit.admin1 : ''}`); }
 
-        <section className="grid">
-          <div className="radar card feature-card"><Map /><div><b>Radar</b><span>RainViewer playback + warning polygons</span></div><Play className="play" /></div>
-          <div className="tornado card feature-card"><Tornado /><div><b>Tornado Tracker</b><span>NWS alerts, SPC outlooks, chasers</span></div></div>
-        </section>
-
-        <section className="daily card">
-          {days.map(([day, desc, hi, lo]) => <div className="day" key={day}><b>{day}</b><span>{desc}</span><strong>{hi} / {lo}</strong></div>)}
-        </section>
-
-        <section className="metrics">
-          {metrics.map(([label, value, Icon]) => <div className="metric card" key={label as string}><Icon size={18}/><span>{label as string}</span><b>{value as string}</b></div>)}
-        </section>
-
-        <section className="creator card">
-          <div className="record"><Video size={26}/></div>
-          <div><b>Shane&apos;s Dashboard</b><span>Quick-record update, auto-tag conditions, publish to the feed.</span></div>
-          <button>Unlock</button>
-        </section>
-
-        <nav className="tabbar">
-          <CloudLightning/><Map/><Tornado/><Video/><Bell/>
-        </nav>
-      </section>
-
-      <aside className="brief">
-        <p className="eyebrow">Preview build</p>
-        <h2>Flagship weather brand, not a generic forecast app.</h2>
-        <p>This Vercel preview is the visual target while the real product remains native SwiftUI for iPhone.</p>
-        <div className="pillrow"><span>iOS 17+</span><span>Radar-first</span><span>Creator mode</span><span>Severe alerts</span></div>
-        <div className="quality"><ShieldAlert/><p><b>Quality bar:</b> fast glanceability, high contrast, one-handed storm use, native-feeling motion, and zero legal shortcuts on chaser/public weather data.</p></div>
-      </aside>
-    </main>
-  );
+  return <main className="app"><div className="storm-bg" /><header className="appbar"><div><p>Stormin' Shane</p><h1>{weather.location}</h1></div><button onClick={locate}>{loading ? <Loader2 className="spin"/> : <LocateFixed/>}</button></header>{tab === 'home' && <HomeScreen weather={weather} loading={loading} refresh={() => load(weather.lat, weather.lon, weather.location)} search={search} query={query} setQuery={setQuery} installHint={installHint}/>} {tab === 'radar' && <RadarScreen weather={weather}/>} {tab === 'tornado' && <TornadoScreen weather={weather}/>} {tab === 'shane' && <ShaneScreen/>} {tab === 'settings' && <SettingsScreen/>}<nav className="tabs">{([['home',Home],['radar',Map],['tornado',Tornado],['shane',Video],['settings',Settings]] as const).map(([id,Icon]) => <button key={id} onClick={() => setTab(id)} className={tab===id?'active':''}><Icon/><span>{id}</span></button>)}</nav></main>;
 }
+
+function HomeScreen({weather, loading, refresh, search, query, setQuery, installHint}: any) { return <section className="screen"><form className="search" onSubmit={search}><Search/><input value={query} onChange={(e: any)=>setQuery(e.target.value)} placeholder="Search city or ZIP"/><button>Go</button></form>{installHint && <div className="install card">Save to iPhone: Share → Add to Home Screen</div>}{weather.alerts.length > 0 && <div className="alert"><AlertTriangle/><div><b>{weather.alerts[0].title}</b><span>{weather.alerts[0].severity} • {weather.alerts[0].expires}</span></div></div>}<section className="hero card"><div><span className="condition">{weather.condition}</span><div className="temp">{weather.temp}°</div><h2>Feels like {weather.feels}°</h2><p>H:{weather.high}° L:{weather.low}°</p></div><div className="bigicon">{icon(weather.code)}</div><button className="refresh" onClick={refresh}>{loading ? <Loader2 className="spin"/> : <RefreshCw/>}</button></section><section className="hourly">{weather.hourly.map((h: any) => <div className="hour card" key={h.time}><span>{h.time}</span><strong>{icon(h.code)}</strong><b>{h.temp}°</b><i style={{height:`${Math.max(6,h.pop/2)}px`}}/><small>{h.pop}%</small></div>)}</section><section className="daily card">{weather.daily.map((d: any) => <div className="day" key={d.day}><b>{d.day}</b><span>{icon(d.code)} {describe(d.code)}</span><strong>{d.high}° / {d.low}°</strong></div>)}</section><section className="metrics"><Metric label="Wind" value={`${weather.wind} mph`} Icon={Wind}/><Metric label="Humidity" value={`${weather.humidity}%`} Icon={Droplets}/><Metric label="Dew Point" value={`${weather.dew}°`} Icon={Thermometer}/><Metric label="Pressure" value={`${weather.pressure} mb`} Icon={Compass}/><Metric label="Visibility" value={`${weather.visibility} mi`} Icon={Sun}/><Metric label="Moon" value="Phase soon" Icon={Moon}/></section></section> }
+function Metric({label,value,Icon}: any){return <div className="metric card"><Icon/><span>{label}</span><b>{value}</b></div>}
+function RadarScreen({weather}: {weather: Weather}) { return <section className="screen"><div className="radarPanel card"><iframe title="Radar map" src={`https://embed.windy.com/embed2.html?lat=${weather.lat}&lon=${weather.lon}&detailLat=${weather.lat}&detailLon=${weather.lon}&width=650&height=650&zoom=7&level=surface&overlay=rain&product=radar&menu=&message=true&marker=true&calendar=now&pressure=&type=map&location=coordinates&detail=&metricWind=mph&metricTemp=%C2%B0F&radarRange=-1`} /><div className="radarHud"><b>Live Radar</b><span>Rain/storm overlay near {weather.location}</span></div></div><div className="layerRow"><button className="chip active">Reflectivity</button><button className="chip">Velocity</button><button className="chip">Lightning</button><button className="chip">Satellite</button></div></section> }
+function TornadoScreen({weather}: {weather: Weather}) { const tor = weather.alerts.filter(a => /tornado/i.test(a.title)); return <section className="screen"><div className="tornadoHero card"><Tornado/><h2>Tornado Tracker</h2><p>{tor.length ? `${tor.length} tornado alert active near ${weather.location}` : `No tornado warning detected near ${weather.location}`}</p></div><div className="watchList card"><b>Active Severe Alerts</b>{weather.alerts.length ? weather.alerts.map(a=><div className="watch" key={a.title}><AlertTriangle/><span>{a.title}</span><small>{a.severity}</small></div>) : <p>No active NWS alerts for this point.</p>}</div><div className="watchList card"><b>Coming next</b><p>SPC risk polygons, warning countdowns, watch boxes, historical tornado tracks, and public chaser streams.</p></div></section> }
+function ShaneScreen(){return <section className="screen"><div className="creator card"><div className="record"><Radio/></div><h2>Shane's Updates</h2><p>Creator dashboard and public video feed will live here. The native app will gate publishing behind Face ID/passcode.</p><button>Watch latest update</button></div></section>}
+function SettingsScreen(){return <section className="screen"><div className="settings card"><h2>Settings</h2><label><input type="checkbox" defaultChecked/> Tornado warnings</label><label><input type="checkbox" defaultChecked/> Severe thunderstorm alerts</label><label><input type="checkbox" defaultChecked/> Shane video updates</label><label><input type="checkbox"/> Color-blind radar palette</label></div></section>}
