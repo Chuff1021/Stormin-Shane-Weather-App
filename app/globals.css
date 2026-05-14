@@ -1,0 +1,71 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+html, body {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* iOS safe-area helpers */
+.safe-top { padding-top: max(env(safe-area-inset-top), 16px); }
+.safe-bottom { padding-bottom: max(env(safe-area-inset-bottom), 16px); }
+
+/* Hide scrollbar for horizontal carousels */
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { scrollbar-width: none; }
+
+/* Animated storm gradient backing */
+.storm-canvas {
+  background:
+    radial-gradient(120% 90% at 30% -10%, rgba(56,189,248,0.18) 0%, transparent 60%),
+    radial-gradient(120% 90% at 80% 10%, rgba(245,158,11,0.10) 0%, transparent 60%),
+    radial-gradient(140% 120% at 50% 110%, rgba(220,38,38,0.22) 0%, transparent 60%),
+    linear-gradient(180deg, #0a0f1f 0%, #04060c 100%);
+}
+
+.glass {
+  background: rgba(17, 26, 51, 0.55);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  border: 1px solid rgba(255,255,255,0.06);
+}
+
+.glass-strong {
+  background: rgba(10, 15, 31, 0.78);
+  backdrop-filter: blur(22px) saturate(160%);
+  -webkit-backdrop-filter: blur(22px) saturate(160%);
+  border: 1px solid rgba(255,255,255,0.08);
+}
+
+.shimmer {
+  background: linear-gradient(90deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.12) 50%, rgba(255,255,255,0.04) 100%);
+  background-size: 200% 100%;
+  animation: shimmer 6s linear infinite;
+}
+
+/* Leaflet container — make it fill on the tracker page */
+.leaflet-container {
+  background: #04060c !important;
+  font-family: inherit;
+}
+.leaflet-tile-pane { filter: hue-rotate(180deg) invert(0.92) saturate(0.9) brightness(0.85); }
+.leaflet-control-attribution { background: rgba(0,0,0,0.5) !important; color: #cbd5e1 !important; }
+.leaflet-control-attribution a { color: #7dd3fc !important; }
+.leaflet-popup-content-wrapper, .leaflet-popup-tip {
+  background: #0a0f1f !important;
+  color: white !important;
+  border: 1px solid rgba(255,255,255,0.08);
+}
+
+/* Siren pulse for active tornado warnings */
+@keyframes siren {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(220,38,38,0.5); }
+  50% { box-shadow: 0 0 0 18px rgba(220,38,38,0); }
+}
+.siren { animation: siren 1.6s ease-out infinite; }

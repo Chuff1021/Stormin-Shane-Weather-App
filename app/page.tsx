@@ -1,427 +1,349 @@
-'use client';
+"use client";
 
-import dynamic from 'next/dynamic';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import {
   AlertTriangle,
-  Bell,
-  Bookmark,
-  CalendarDays,
-  Check,
   ChevronRight,
   CloudRain,
   Compass,
+  Droplets,
   Gauge,
-  Home,
-  Loader2,
   LocateFixed,
-  Map,
-  MapPin,
+  Radar,
   RefreshCw,
   Search,
   Settings,
   ShieldAlert,
   Sun,
-  ThermometerSun,
-  Trash2,
+  Thermometer,
+  Tornado,
   Video,
   Wind,
-  X,
-} from 'lucide-react';
+} from "lucide-react";
+import { describeCode, compass, type Unit, type Place } from "@/lib/weather";
+import WeatherHero from "./components/WeatherHero";
+import AlertBanner from "./components/AlertBanner";
+import HourlyStrip from "./components/HourlyStrip";
+import DailyList from "./components/DailyList";
+import DetailTiles from "./components/DetailTiles";
+import ShaneFeed from "./components/ShaneFeed";
+import LocationPicker from "./components/LocationPicker";
 
-const RadarMap = dynamic(() => import('./components/RadarMap'), { ssr: false });
-
-type Tab = 'now' | 'hourly' | 'radar' | 'daily' | 'alerts' | 'shane';
-type Unit = 'fahrenheit' | 'celsius';
-type Place = { label: string; latitude: number; longitude: number };
-type SavedState = { place: Place; saved: Place[]; unit: Unit };
-
-type Hour = {
-  stamp: string;
-  time: string;
-  temp: number;
-  feels: number;
-  humidity: number;
-  pop: number;
-  precip: number;
-  code: number;
-  wind: number;
-  gust: number;
+const DEFAULT_PLACE: Place = {
+  label: "Republic, Missouri, US",
+  latitude: 37.1201,
+  longitude: -93.4802,
 };
 
-type Day = {
-  date: string;
-  day: string;
-  high: number;
-  low: number;
-  code: number;
-  rainChance: number;
-  rainTotal: number;
-  uv: number;
-  sunrise: string;
-  sunset: string;
-};
+const STORE_KEY = "stormin-shane-state-v4";
 
-type AppWeather = {
-  placeLabel: string;
-  unit: Unit;
-  symbol: string;
-  updated: string;
-  temp: number;
-  feels: number;
-  condition: string;
-  code: number;
-  wind: number;
-  gust: number;
-  windDir: string;
-  humidity: number;
-  dew: number;
-  pressure: number;
-  visibility: number;
-  uv: number;
-  aqi: number | null;
-  nextRain: Hour | null;
-  hourly: Hour[];
-  days: Day[];
-  alerts: any[];
-};
+type SavedState = { place: Place; unit: Unit; saved: Place[] };
 
-const DEFAULT_PLACE: Place = { label: 'Republic, Missouri', latitude: 37.1201, longitude: -93.4802 };
-const STORE_KEY = 'stormin-shane-state-v3';
-const DEFAULT_STATE: SavedState = { place: DEFAULT_PLACE, saved: [], unit: 'fahrenheit' };
+const DEFAULT_STATE: SavedState = {
+  place: DEFAULT_PLACE,
+  unit: "fahrenheit",
+  saved: [],
+};
 
 function readState(): SavedState {
-  if (typeof window === 'undefined') return DEFAULT_STATE;
+  if (typeof window === "undefined") return DEFAULT_STATE;
   try {
-    return { ...DEFAULT_STATE, ...JSON.parse(localStorage.getItem(STORE_KEY) || '{}') };
+    return { ...DEFAULT_STATE, ...JSON.parse(localStorage.getItem(STORE_KEY) || "{}") };
   } catch {
     return DEFAULT_STATE;
   }
 }
 
 function writeState(state: SavedState) {
-  localStorage.setItem(STORE_KEY, JSON.stringify(state));
+  try {
+    localStorage.setItem(STORE_KEY, JSON.stringify(state));
+  } catch {}
 }
 
-function icon(code: number) {
-  if ([95, 96, 99].includes(code)) return '⛈️';
-  if ([80, 81, 82, 61, 63, 65].includes(code)) return '🌧️';
-  if ([71, 73, 75, 77, 85, 86].includes(code)) return '❄️';
-  if ([45, 48].includes(code)) return '🌫️';
-  if (code === 0) return '☀️';
-  if ([1, 2].includes(code)) return '🌤️';
-  return '☁️';
-}
-
-function describe(code: number) {
-  if ([95, 96, 99].includes(code)) return 'Thunderstorms';
-  if ([80, 81, 82].includes(code)) return 'Rain showers';
-  if ([61, 63, 65].includes(code)) return 'Rain';
-  if ([71, 73, 75, 77, 85, 86].includes(code)) return 'Snow';
-  if ([45, 48].includes(code)) return 'Fog';
-  if (code === 0) return 'Clear';
-  if ([1, 2].includes(code)) return 'Partly cloudy';
-  return 'Cloudy';
-}
-
-function compass(deg: number) {
-  return ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][Math.round(deg / 45) % 8];
-}
-
-function dayName(date: string, i: number) {
-  if (i === 0) return 'Today';
-  if (i === 1) return 'Tomorrow';
-  return new Date(`${date}T12:00:00`).toLocaleDateString([], { weekday: 'short' });
-}
-
-function timeShort(value: string) {
-  return new Date(value).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-}
-
-function normalize(payload: any): AppWeather {
-  const f = payload.forecast;
-  const c = f.current;
-  const start = Math.max(0, f.hourly.time.findIndex((t: string) => t >= c.time));
-  const hourly: Hour[] = f.hourly.time.slice(start, start + 48).map((stamp: string, off: number) => {
-    const i = start + off;
-    return {
-      stamp,
-      time: off === 0 ? 'Now' : new Date(stamp).toLocaleTimeString([], { hour: 'numeric' }),
-      temp: Math.round(f.hourly.temperature_2m[i]),
-      feels: Math.round(f.hourly.apparent_temperature[i]),
-      humidity: f.hourly.relative_humidity_2m[i],
-      pop: f.hourly.precipitation_probability[i] ?? 0,
-      precip: f.hourly.precipitation[i] ?? 0,
-      code: f.hourly.weather_code[i],
-      wind: Math.round(f.hourly.wind_speed_10m[i] ?? 0),
-      gust: Math.round(f.hourly.wind_gusts_10m[i] ?? 0),
-    };
-  });
-  const days: Day[] = f.daily.time.map((date: string, i: number) => ({
-    date,
-    day: dayName(date, i),
-    high: Math.round(f.daily.temperature_2m_max[i]),
-    low: Math.round(f.daily.temperature_2m_min[i]),
-    code: f.daily.weather_code[i],
-    rainChance: f.daily.precipitation_probability_max[i] ?? 0,
-    rainTotal: f.daily.precipitation_sum[i] ?? 0,
-    uv: Math.round(f.daily.uv_index_max[i] ?? 0),
-    sunrise: f.daily.sunrise[i],
-    sunset: f.daily.sunset[i],
-  }));
-  return {
-    placeLabel: payload.label,
-    unit: payload.unit,
-    symbol: payload.unit === 'celsius' ? '°C' : '°',
-    updated: timeShort(payload.updatedAt),
-    temp: Math.round(c.temperature_2m),
-    feels: Math.round(c.apparent_temperature),
-    condition: describe(c.weather_code),
-    code: c.weather_code,
-    wind: Math.round(c.wind_speed_10m ?? 0),
-    gust: Math.round(c.wind_gusts_10m ?? 0),
-    windDir: compass(c.wind_direction_10m ?? 0),
-    humidity: c.relative_humidity_2m,
-    dew: Math.round(c.dew_point_2m),
-    pressure: Math.round(c.surface_pressure),
-    visibility: Math.round((c.visibility || 0) / 1609),
-    uv: Math.round(c.uv_index ?? 0),
-    aqi: payload.airQuality?.current?.us_aqi ?? null,
-    nextRain: hourly.find((h) => h.pop >= 35 || h.precip > 0) || null,
-    hourly,
-    days,
-    alerts: payload.alerts || [],
-  };
-}
-
-function severity(weather: AppWeather | null) {
-  if (!weather) return { label: 'Loading', tone: 'neutral', detail: 'Checking live conditions…' };
-  if (weather.alerts.length) return { label: `${weather.alerts.length} active alert${weather.alerts.length > 1 ? 's' : ''}`, tone: 'danger', detail: weather.alerts[0].title };
-  if (weather.gust >= 40) return { label: 'Wind watch', tone: 'watch', detail: `Gusts near ${weather.gust} mph` };
-  if (weather.nextRain?.pop && weather.nextRain.pop >= 70) return { label: 'Rain likely', tone: 'watch', detail: `${weather.nextRain.pop}% around ${weather.nextRain.time}` };
-  return { label: 'All clear', tone: 'good', detail: 'No active warnings for this location.' };
-}
-
-export default function StorminShaneApp() {
+export default function Home() {
   const [state, setState] = useState<SavedState>(DEFAULT_STATE);
-  const [tab, setTab] = useState<Tab>('now');
-  const [weather, setWeather] = useState<AppWeather | null>(null);
+  const [weather, setWeather] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [message, setMessage] = useState('');
-  const [query, setQuery] = useState('');
-  const [results, setResults] = useState<Place[]>([]);
-  const [sheet, setSheet] = useState<any>(null);
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
+  const loadWeather = useCallback(
+    async (place: Place, unit: Unit) => {
+      setError(null);
+      try {
+        const res = await fetch(
+          `/api/weather?lat=${place.latitude}&lon=${place.longitude}&label=${encodeURIComponent(place.label)}&unit=${unit}`,
+          { cache: "no-store" }
+        );
+        if (!res.ok) throw new Error("Weather is temporarily unavailable.");
+        setWeather(await res.json());
+      } catch (e: any) {
+        setError(e?.message || "Couldn't load weather.");
+      }
+    },
+    []
+  );
+
+  // initial load
   useEffect(() => {
-    navigator.serviceWorker?.register('/sw.js').catch(() => {});
     const initial = readState();
     setState(initial);
-    loadWeather(initial.place, initial.unit);
-  }, []);
+    setLoading(true);
+    loadWeather(initial.place, initial.unit).finally(() => setLoading(false));
+  }, [loadWeather]);
+
+  // background refresh every 5 min
+  useEffect(() => {
+    const t = setInterval(() => {
+      loadWeather(state.place, state.unit);
+    }, 5 * 60 * 1000);
+    return () => clearInterval(t);
+  }, [state.place, state.unit, loadWeather]);
 
   function persist(next: SavedState) {
     setState(next);
     writeState(next);
   }
 
-  async function loadWeather(place = state.place, unit = state.unit) {
+  async function selectPlace(place: Place) {
+    persist({ ...state, place });
+    setPickerOpen(false);
     setLoading(true);
-    setMessage('');
-    try {
-      const res = await fetch(`/api/weather?lat=${place.latitude}&lon=${place.longitude}&label=${encodeURIComponent(place.label)}&unit=${unit}`, { cache: 'no-store' });
-      if (!res.ok) throw new Error('Weather data is temporarily unavailable.');
-      const data = normalize(await res.json());
-      setWeather(data);
-      persist({ ...state, place, unit });
-    } catch (error: any) {
-      setMessage(error.message || 'Something went wrong loading weather.');
-    } finally {
-      setLoading(false);
-    }
+    await loadWeather(place, state.unit);
+    setLoading(false);
   }
 
-  async function search(event?: React.FormEvent) {
-    event?.preventDefault();
-    if (!query.trim()) return;
-    setLoading(true);
-    setMessage('');
-    try {
-      const data = await fetch(`/api/geocode?q=${encodeURIComponent(query)}`).then((r) => r.json());
-      const rows = data.results || [];
-      setResults(rows);
-      if (rows[0]) await loadWeather(rows[0], state.unit);
-      else setMessage('No location found. Try city + state, like “Republic MO.”');
-    } catch {
-      setMessage('Location search failed. Try again.');
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  function useLocation() {
-    navigator.geolocation?.getCurrentPosition(
-      (pos) => loadWeather({ label: 'Current Location', latitude: pos.coords.latitude, longitude: pos.coords.longitude }, state.unit),
-      () => setMessage('Location permission denied. Search a city instead.'),
-      { enableHighAccuracy: true, timeout: 9000 },
+  async function useMyLocation() {
+    if (!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        selectPlace({
+          label: "Current Location",
+          latitude: pos.coords.latitude,
+          longitude: pos.coords.longitude,
+        });
+      },
+      () => setError("Location permission denied. Try searching by city."),
+      { enableHighAccuracy: true, timeout: 9000 }
     );
   }
 
-  function saveCurrent() {
-    const current = state.place;
-    const saved = [current, ...state.saved.filter((p) => p.label !== current.label)].slice(0, 8);
-    persist({ ...state, saved });
+  async function manualRefresh() {
+    setRefreshing(true);
+    await loadWeather(state.place, state.unit);
+    setRefreshing(false);
   }
 
-  function removeSaved(place: Place) {
-    persist({ ...state, saved: state.saved.filter((p) => p.label !== place.label) });
-  }
-
-  function changeUnit(unit: Unit) {
+  function toggleUnit() {
+    const unit: Unit = state.unit === "fahrenheit" ? "celsius" : "fahrenheit";
     persist({ ...state, unit });
-    loadWeather(state.place, unit);
+    setLoading(true);
+    loadWeather(state.place, unit).finally(() => setLoading(false));
   }
 
-  const status = useMemo(() => severity(weather), [weather]);
-  const today = weather?.days[0];
+  const symbol = state.unit === "celsius" ? "°C" : "°";
+  const condition = useMemo(() => {
+    const code = weather?.forecast?.current?.weather_code;
+    return code !== undefined ? describeCode(code) : null;
+  }, [weather]);
+
+  const tornadoAlerts = useMemo(
+    () =>
+      (weather?.alerts ?? []).filter((a: any) =>
+        /Tornado/i.test(a.event)
+      ),
+    [weather]
+  );
 
   return (
-    <main className="phone-shell">
-      <div className="storm-bg" />
-      <header className="app-header">
-        <button className="ghost location-button" onClick={() => setSettingsOpen(true)}>
-          <MapPin />
-          <span>{state.place.label}</span>
+    <main className="storm-canvas min-h-screen relative">
+      {/* Top bar */}
+      <header className="safe-top px-4 pb-2 flex items-center gap-3">
+        <button
+          onClick={() => setPickerOpen(true)}
+          className="flex-1 flex items-center gap-2 glass rounded-2xl px-4 py-3 text-left"
+        >
+          <Search className="w-4 h-4 text-bolt-400" />
+          <span className="text-sm text-white/80 truncate">
+            {state.place.label}
+          </span>
         </button>
-        <div className="header-actions">
-          <button className="ghost icon-button" onClick={() => loadWeather()} aria-label="Refresh weather">{loading ? <Loader2 className="spin" /> : <RefreshCw />}</button>
-          <button className="ghost icon-button" onClick={() => setSettingsOpen(true)} aria-label="Open settings"><Settings /></button>
-        </div>
+        <button
+          onClick={manualRefresh}
+          aria-label="Refresh"
+          className="glass rounded-2xl p-3"
+        >
+          <RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`} />
+        </button>
+        <button
+          onClick={toggleUnit}
+          aria-label="Toggle unit"
+          className="glass rounded-2xl px-3 py-3 text-xs font-medium tracking-wide"
+        >
+          {state.unit === "fahrenheit" ? "°F" : "°C"}
+        </button>
       </header>
 
-      <form className="command-bar" onSubmit={search}>
-        <Search />
-        <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search city, ZIP, or place" />
-        <button type="submit">Go</button>
-      </form>
-
-      {message && <div className="notice danger"><AlertTriangle /> {message}</div>}
-      {results.length > 1 && <SearchResults rows={results} choose={(p: Place) => loadWeather(p, state.unit)} />}
-
-      <section className={`risk-card ${status.tone}`}>
-        <div>
-          <span>Storm status</span>
-          <strong>{status.label}</strong>
-          <p>{status.detail}</p>
+      {/* Error notice */}
+      {error && (
+        <div className="mx-4 my-2 flex items-center gap-2 rounded-xl bg-siren-600/20 border border-siren-600/40 text-siren-500 px-4 py-3 text-sm">
+          <AlertTriangle className="w-4 h-4" />
+          {error}
         </div>
-        {status.tone === 'danger' ? <ShieldAlert /> : status.tone === 'watch' ? <CloudRain /> : <Check />}
+      )}
+
+      {/* Active tornado banner — always pinned at top if present */}
+      {tornadoAlerts.length > 0 && (
+        <div className="px-4 mt-2">
+          <AlertBanner alerts={tornadoAlerts} />
+        </div>
+      )}
+
+      {/* Hero */}
+      <section className="px-4 pt-4">
+        <WeatherHero
+          loading={loading}
+          weather={weather}
+          condition={condition}
+          symbol={symbol}
+          placeLabel={state.place.label}
+        />
       </section>
 
-      {tab === 'now' && <NowView weather={weather} today={today} loading={loading} save={saveCurrent} locate={useLocation} openSettings={() => setSettingsOpen(true)} />}
-      {tab === 'hourly' && <HourlyView weather={weather} />}
-      {tab === 'radar' && <RadarView place={state.place} />}
-      {tab === 'daily' && <DailyView weather={weather} open={setSheet} />}
-      {tab === 'alerts' && <AlertsView weather={weather} open={setSheet} />}
-      {tab === 'shane' && <ShaneView weather={weather} />}
+      {/* Quick actions row */}
+      <section className="px-4 mt-5 grid grid-cols-2 gap-3">
+        <Link
+          href="/tracker"
+          className="glass rounded-2xl p-4 flex items-center gap-3 active:scale-[0.99] transition"
+        >
+          <div className="w-10 h-10 rounded-xl bg-siren-pulse flex items-center justify-center">
+            <Tornado className="w-5 h-5 text-white" />
+          </div>
+          <div>
+            <div className="text-sm text-white/60">Tornado Tracker</div>
+            <div className="font-semibold">Live storms & chasers</div>
+          </div>
+        </Link>
+        <Link
+          href="/dashboard"
+          className="glass rounded-2xl p-4 flex items-center gap-3 active:scale-[0.99] transition"
+        >
+          <div className="w-10 h-10 rounded-xl bg-bolt-500/20 flex items-center justify-center">
+            <Video className="w-5 h-5 text-bolt-400" />
+          </div>
+          <div>
+            <div className="text-sm text-white/60">Shane's Studio</div>
+            <div className="font-semibold">Post a video update</div>
+          </div>
+        </Link>
+      </section>
 
-      <nav className="tab-bar">
-        {([
-          ['now', Home],
-          ['hourly', CalendarDays],
-          ['radar', Map],
-          ['daily', Sun],
-          ['alerts', ShieldAlert],
-          ['shane', Video],
-        ] as const).map(([id, Icon]) => (
-          <button key={id} className={tab === id ? 'active' : ''} onClick={() => setTab(id)}>
-            <Icon />
-            <span>{id}</span>
-          </button>
-        ))}
-      </nav>
+      {/* Shane's latest video feed */}
+      <section className="mt-6">
+        <SectionHeader title="From Shane" subtitle="Latest field updates" icon={<Video className="w-4 h-4" />} />
+        <ShaneFeed />
+      </section>
 
-      {settingsOpen && (
-        <SettingsSheet
+      {/* Hourly */}
+      <section className="mt-6">
+        <SectionHeader title="Next 24 hours" subtitle="Temperature & precipitation" icon={<CloudRain className="w-4 h-4" />} />
+        <HourlyStrip weather={weather} symbol={symbol} />
+      </section>
+
+      {/* Detail tiles */}
+      <section className="mt-6 px-4">
+        <DetailTiles weather={weather} symbol={symbol} />
+      </section>
+
+      {/* Daily */}
+      <section className="mt-6 mb-32">
+        <SectionHeader title="10-day forecast" subtitle="Highs, lows & rain chance" icon={<Sun className="w-4 h-4" />} />
+        <DailyList weather={weather} symbol={symbol} />
+      </section>
+
+      {/* Footer attribution */}
+      <footer className="px-6 pb-10 text-center text-xs text-white/40">
+        <p>Forecast: Open-Meteo · Alerts: NWS api.weather.gov · Radar: RainViewer + Iowa State Mesonet</p>
+        <p className="mt-1">Made for Stormin' Shane. Add to home screen → premier weather PWA.</p>
+      </footer>
+
+      {/* Location picker sheet */}
+      {pickerOpen && (
+        <LocationPicker
           state={state}
-          weather={weather}
-          close={() => setSettingsOpen(false)}
-          changeUnit={changeUnit}
-          choose={(p: Place) => loadWeather(p, state.unit)}
-          remove={removeSaved}
-          locate={useLocation}
+          onClose={() => setPickerOpen(false)}
+          onSelect={selectPlace}
+          onUseMyLocation={useMyLocation}
+          onRemove={(p) =>
+            persist({ ...state, saved: state.saved.filter((x) => x.label !== p.label) })
+          }
+          onSaveCurrent={() =>
+            persist({
+              ...state,
+              saved: [state.place, ...state.saved.filter((p) => p.label !== state.place.label)].slice(0, 10),
+            })
+          }
         />
       )}
-      {sheet && <DetailSheet data={sheet} close={() => setSheet(null)} symbol={weather?.symbol || '°'} />}
+
+      {/* Floating bottom nav */}
+      <nav className="fixed bottom-0 inset-x-0 safe-bottom pointer-events-none">
+        <div className="mx-auto max-w-xl px-4">
+          <div className="glass-strong rounded-3xl flex items-center justify-around p-2 pointer-events-auto shadow-2xl">
+            <NavBtn href="/" label="Home" icon={<Sun className="w-5 h-5" />} active />
+            <NavBtn href="/tracker" label="Tracker" icon={<Radar className="w-5 h-5" />} />
+            <NavBtn href="/dashboard" label="Studio" icon={<Video className="w-5 h-5" />} />
+          </div>
+        </div>
+      </nav>
     </main>
   );
 }
 
-function SearchResults({ rows, choose }: { rows: Place[]; choose: (p: Place) => void }) {
-  return <section className="search-results panel"><p>Best matches</p>{rows.slice(0, 5).map((r) => <button key={`${r.label}-${r.latitude}`} onClick={() => choose(r)}>{r.label}<ChevronRight /></button>)}</section>;
+function SectionHeader({
+  title,
+  subtitle,
+  icon,
+}: {
+  title: string;
+  subtitle?: string;
+  icon?: React.ReactNode;
+}) {
+  return (
+    <div className="px-4 mb-2 flex items-end justify-between">
+      <div>
+        <div className="text-xs uppercase tracking-wider text-white/40 flex items-center gap-2">
+          {icon}
+          {title}
+        </div>
+        {subtitle && <div className="text-sm text-white/60">{subtitle}</div>}
+      </div>
+    </div>
+  );
 }
 
-function LoadingCard() {
-  return <section className="panel loading"><Loader2 className="spin" /> Loading live weather…</section>;
-}
-
-function NowView({ weather, today, loading, save, locate, openSettings }: any) {
-  if (!weather) return <LoadingCard />;
-  return <section className="view-stack">
-    <section className="hero-weather panel">
-      <div className="hero-topline"><span>{weather.condition}</span><button onClick={save}><Bookmark /> Save</button></div>
-      <div className="hero-main"><div><strong>{weather.temp}{weather.symbol}</strong><p>Feels like {weather.feels}{weather.symbol}</p></div><i>{icon(weather.code)}</i></div>
-      <div className="today-range"><span>High {today?.high}{weather.symbol}</span><span>Low {today?.low}{weather.symbol}</span><span>Updated {weather.updated}</span></div>
-    </section>
-    <section className="next-card panel">
-      <CloudRain />
-      <div><span>Next precipitation</span><strong>{weather.nextRain ? `${weather.nextRain.pop}% around ${weather.nextRain.time}` : 'None likely soon'}</strong><p>{weather.nextRain ? `${weather.nextRain.precip} in expected this hour` : 'Next 24 hours look mostly dry.'}</p></div>
-    </section>
-    <section className="metrics-grid">
-      <Metric icon={<Wind />} label="Wind" value={`${weather.wind} mph ${weather.windDir}`} sub={`Gust ${weather.gust}`} />
-      <Metric icon={<ThermometerSun />} label="Humidity" value={`${weather.humidity}%`} sub={`Dew ${weather.dew}${weather.symbol}`} />
-      <Metric icon={<Gauge />} label="AQI" value={weather.aqi ?? '—'} sub="US AQI" />
-      <Metric icon={<Compass />} label="Pressure" value={`${weather.pressure}`} sub="hPa" />
-    </section>
-    <section className="quick-actions">
-      <button onClick={locate}><LocateFixed /> Use my location</button>
-      <button onClick={openSettings}><Settings /> Locations & units</button>
-    </section>
-  </section>;
-}
-
-function Metric({ icon, label, value, sub }: any) {
-  return <div className="metric panel">{icon}<span>{label}</span><strong>{value}</strong><small>{sub}</small></div>;
-}
-
-function HourlyView({ weather }: { weather: AppWeather | null }) {
-  if (!weather) return <LoadingCard />;
-  return <section className="view-stack"><h2>Next 48 hours</h2><div className="timeline panel">{weather.hourly.map((h) => <div key={h.stamp} className="hour-row"><span>{h.time}</span><b>{icon(h.code)}</b><strong>{h.temp}{weather.symbol}</strong><small>{h.pop}% rain</small><em>{h.wind} mph</em></div>)}</div></section>;
-}
-
-function RadarView({ place }: { place: Place }) {
-  return <section className="view-stack radar-screen"><div className="radar-card panel"><RadarMap lat={place.latitude} lon={place.longitude} label={place.label} /><div className="radar-caption"><strong>Live radar</strong><span>RainViewer timeline. Pinch/drag/zoom on mobile.</span></div></div></section>;
-}
-
-function DailyView({ weather, open }: { weather: AppWeather | null; open: (x: any) => void }) {
-  if (!weather) return <LoadingCard />;
-  return <section className="view-stack"><h2>10-day outlook</h2><div className="daily-list panel">{weather.days.map((d) => <button key={d.date} onClick={() => open(d)}><span>{d.day}</span><b>{icon(d.code)} {describe(d.code)}</b><strong>{d.low}{weather.symbol} / {d.high}{weather.symbol}</strong><small>{d.rainChance}% rain</small></button>)}</div></section>;
-}
-
-function AlertsView({ weather, open }: { weather: AppWeather | null; open: (x: any) => void }) {
-  if (!weather) return <LoadingCard />;
-  return <section className="view-stack"><h2>Weather alerts</h2>{weather.alerts.length ? weather.alerts.map((a) => <button className="alert-row panel" key={`${a.title}-${a.expires}`} onClick={() => open({ ...a, alert: true })}><AlertTriangle /><span><strong>{a.title}</strong><small>{a.severity} · {a.area}</small></span><ChevronRight /></button>) : <section className="empty-state panel"><ShieldAlert /><strong>No active NWS alerts</strong><p>This location is clear right now.</p></section>}</section>;
-}
-
-function ShaneView({ weather }: { weather: AppWeather | null }) {
-  const line = weather?.alerts.length ? `Lead with ${weather.alerts[0].title}.` : weather?.nextRain ? `Rain chance climbs around ${weather.nextRain.time}.` : 'Quiet weather right now.';
-  return <section className="view-stack"><section className="shane-card panel"><Video /><span>Stormin’ Shane briefing</span><h2>{line}</h2><p>This is the product slot for Shane’s human forecast/video posts. The weather engine is ready; next build connects real creator posts, moderation, and notifications.</p></section><section className="panel notification-card"><Bell /><div><strong>Notify followers</strong><p>Future version: push alerts for Shane posts, tornado watches, and severe warnings.</p></div></section></section>;
-}
-
-function SettingsSheet({ state, weather, close, changeUnit, choose, remove, locate }: any) {
-  return <div className="sheet"><button className="sheet-backdrop" onClick={close} /><section className="sheet-panel panel"><button className="close" onClick={close}><X /></button><h2>Locations</h2><div className="unit-switch"><button className={state.unit === 'fahrenheit' ? 'active' : ''} onClick={() => changeUnit('fahrenheit')}>°F</button><button className={state.unit === 'celsius' ? 'active' : ''} onClick={() => changeUnit('celsius')}>°C</button></div><button className="wide-action" onClick={locate}><LocateFixed /> Use current location</button><h3>Saved</h3>{state.saved.length ? state.saved.map((p: Place) => <div className="saved-row" key={p.label}><button onClick={() => choose(p)}>{p.label}</button><button onClick={() => remove(p)}><Trash2 /></button></div>) : <p className="muted">No saved locations yet. Search a place and hit Save.</p>}<h3>Current</h3><p className="muted">{weather?.placeLabel || state.place.label}</p></section></div>;
-}
-
-function DetailSheet({ data, close, symbol }: any) {
-  const isAlert = data.alert;
-  return <div className="sheet"><button className="sheet-backdrop" onClick={close} /><section className="sheet-panel panel"><button className="close" onClick={close}><X /></button>{isAlert ? <><h2>{data.title}</h2><p>{data.headline || data.description || 'No details provided.'}</p><small>{data.area}</small></> : <><h2>{data.day}</h2><div className="big-icon">{icon(data.code)}</div><p>{describe(data.code)} with a {data.rainChance}% rain chance. High {data.high}{symbol}, low {data.low}{symbol}. UV {data.uv}.</p><small>Sunrise {timeShort(data.sunrise)} · Sunset {timeShort(data.sunset)}</small></>}</section></div>;
+function NavBtn({
+  href,
+  label,
+  icon,
+  active,
+}: {
+  href: string;
+  label: string;
+  icon: React.ReactNode;
+  active?: boolean;
+}) {
+  return (
+    <Link
+      href={href}
+      className={`flex flex-col items-center justify-center gap-0.5 px-4 py-2 rounded-2xl ${
+        active ? "bg-white/10 text-white" : "text-white/60"
+      }`}
+    >
+      {icon}
+      <span className="text-[10px] font-medium">{label}</span>
+    </Link>
+  );
 }
