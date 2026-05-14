@@ -1,90 +1,52 @@
 "use client";
 
-import { Thermometer } from "lucide-react";
-import { compass, describeCode } from "@/lib/weather";
-
-const TONE_BG: Record<string, string> = {
-  clear: "from-amber-500/30 via-bolt-500/20 to-transparent",
-  wet: "from-bolt-600/40 via-bolt-500/15 to-transparent",
-  severe: "from-siren-600/50 via-amber-500/30 to-transparent",
-  cold: "from-cyan-400/30 via-bolt-500/15 to-transparent",
-  neutral: "from-ink-700/60 via-ink-800/20 to-transparent",
-};
+import { describeCode } from "@/lib/weather";
 
 export default function WeatherHero({
   loading,
   weather,
-  condition,
   symbol,
   placeLabel,
 }: {
   loading: boolean;
   weather: any;
-  condition: ReturnType<typeof describeCode> | null;
   symbol: string;
   placeLabel: string;
 }) {
   if (loading && !weather) {
     return (
-      <div className="rounded-3xl p-6 shimmer h-56 glass" aria-busy>
-        <div className="h-4 w-24 bg-white/10 rounded mb-4" />
-        <div className="h-16 w-40 bg-white/10 rounded mb-2" />
-        <div className="h-4 w-32 bg-white/10 rounded" />
-      </div>
+      <section className="px-6 pt-8 pb-2 text-white">
+        <div className="h-3 w-28 rounded-full shimmer-bg" />
+        <div className="h-24 w-44 rounded-2xl shimmer-bg mt-3" />
+        <div className="h-4 w-40 rounded-full shimmer-bg mt-3" />
+      </section>
     );
   }
-
   if (!weather) return null;
 
   const c = weather.forecast.current;
   const today = weather.forecast.daily;
+  const cond = describeCode(c.weather_code);
+  const temp = Math.round(c.temperature_2m);
   const high = Math.round(today.temperature_2m_max[0]);
   const low = Math.round(today.temperature_2m_min[0]);
-  const temp = Math.round(c.temperature_2m);
   const feels = Math.round(c.apparent_temperature);
-  const dir = compass(c.wind_direction_10m ?? 0);
-  const tone = condition?.tone || "neutral";
 
   return (
-    <div
-      className={`relative overflow-hidden rounded-3xl p-6 glass border border-white/5 bg-gradient-to-b ${TONE_BG[tone] || TONE_BG.neutral}`}
-    >
-      {/* Decorative blob */}
-      <div className="absolute -top-16 -right-12 w-64 h-64 rounded-full bg-bolt-500/10 blur-3xl pointer-events-none" />
-
-      <div className="relative flex items-start justify-between">
-        <div>
-          <div className="text-xs uppercase tracking-widest text-white/50">
-            {placeLabel}
-          </div>
-          <div className="mt-1 flex items-baseline gap-1">
-            <span className="text-7xl font-light tracking-tight">{temp}</span>
-            <span className="text-3xl font-light text-white/70">{symbol}</span>
-          </div>
-          <div className="mt-1 text-lg text-white/80">
-            {condition?.label} <span className="opacity-50">·</span> Feels {feels}{symbol}
-          </div>
-        </div>
-        <div className="text-6xl leading-none mt-2" aria-hidden>
-          {condition?.emoji || "—"}
-        </div>
+    <section className="px-6 pt-6 pb-3 text-white">
+      <div className="text-[13px] uppercase tracking-[0.18em] opacity-80">
+        {placeLabel}
       </div>
-
-      <div className="relative mt-5 flex items-center gap-3 text-sm text-white/70">
-        <span className="inline-flex items-center gap-1">
-          <Thermometer className="w-4 h-4 text-amber-400" />
-          H {high}{symbol}
+      <div className="mt-1 flex items-start gap-2">
+        <span className="text-[96px] leading-none font-ultralight tracking-tight">
+          {temp}
         </span>
-        <span>·</span>
-        <span className="inline-flex items-center gap-1">
-          <Thermometer className="w-4 h-4 text-bolt-400" />
-          L {low}{symbol}
-        </span>
-        <span>·</span>
-        <span>
-          Wind {Math.round(c.wind_speed_10m ?? 0)} mph {dir}
-        </span>
+        <span className="text-3xl font-ultralight mt-2 opacity-80">{symbol}</span>
       </div>
-    </div>
+      <div className="mt-1 text-lg font-medium drop-shadow-sm">{cond.label}</div>
+      <div className="mt-0.5 text-sm opacity-80">
+        H {high}{symbol} &nbsp;·&nbsp; L {low}{symbol} &nbsp;·&nbsp; Feels {feels}{symbol}
+      </div>
+    </section>
   );
 }

@@ -9,7 +9,7 @@ export async function POST(req: NextRequest) {
     await logout();
     return NextResponse.json({ ok: true });
   }
-  const ok = await login(String(body?.password || ""));
-  if (!ok) return NextResponse.json({ error: "wrong password" }, { status: 401 });
+  const ok = await login(String(body?.username || ""), String(body?.password || ""));
+  if (!ok) return NextResponse.json({ error: "wrong username or password" }, { status: 401 });
   return NextResponse.json({ ok: true });
 }

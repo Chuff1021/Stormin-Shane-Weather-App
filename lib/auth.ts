@@ -1,14 +1,29 @@
 import { cookies } from "next/headers";
 
+// Simple username + password gate for Shane's studio.
+// Defaults are baked in for first-run convenience — override with env vars on Vercel
+// when you want to rotate credentials.
+
+export const DEFAULT_USERNAME = "shane";
+export const DEFAULT_PASSWORD = "stormin2026";
+
 const COOKIE = "shane_session";
+
+function creds() {
+  return {
+    username: process.env.SHANE_USERNAME || DEFAULT_USERNAME,
+    password: process.env.SHANE_PASSWORD || DEFAULT_PASSWORD,
+  };
+}
 
 export async function isShane(): Promise<boolean> {
   const jar = await cookies();
   return jar.get(COOKIE)?.value === expected();
 }
 
-export async function login(password: string): Promise<boolean> {
-  if (password !== process.env.SHANE_PASSWORD) return false;
+export async function login(username: string, password: string): Promise<boolean> {
+  const c = creds();
+  if (username !== c.username || password !== c.password) return false;
   const jar = await cookies();
   jar.set(COOKIE, expected(), {
     httpOnly: true,
@@ -25,11 +40,11 @@ export async function logout() {
   jar.delete(COOKIE);
 }
 
-// Tie the cookie value to the current password so a rotation invalidates old sessions.
+// Cookie value is tied to current creds so rotating either invalidates old sessions.
 function expected() {
-  const pw = process.env.SHANE_PASSWORD || "no-password-set";
-  // simple non-secret token; not for crypto, just to bind cookie to current pw value
+  const { username, password } = creds();
+  const blob = `${username}::${password}`;
   let h = 0;
-  for (let i = 0; i < pw.length; i++) h = (h * 31 + pw.charCodeAt(i)) | 0;
+  for (let i = 0; i < blob.length; i++) h = (h * 31 + blob.charCodeAt(i)) | 0;
   return `ok-${(h >>> 0).toString(36)}`;
 }

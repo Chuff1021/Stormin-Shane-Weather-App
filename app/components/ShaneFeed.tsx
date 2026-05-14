@@ -36,37 +36,21 @@ export default function ShaneFeed() {
   if (loading) {
     return (
       <div className="px-4">
-        <div className="glass rounded-2xl h-44 shimmer" />
+        <div className="card h-40 shimmer-bg" />
       </div>
     );
   }
 
-  if (!configured) {
-    return (
-      <div className="mx-4 glass rounded-2xl p-5 text-sm text-white/70">
-        <div className="font-semibold text-white mb-1 flex items-center gap-2">
-          <Video className="w-4 h-4 text-bolt-400" />
-          Shane's video studio
-        </div>
-        Connect Vercel Blob storage to enable video uploads (Vercel project →
-        Storage → Create Blob Store). Until then, videos won't post.
-      </div>
-    );
-  }
-
-  if (!videos.length) {
-    return (
-      <div className="mx-4 glass rounded-2xl p-5 text-sm text-white/70">
-        <div className="font-semibold text-white mb-1">No updates yet</div>
-        Shane hasn't posted a clip. The newest video from{" "}
-        <code className="text-bolt-400">/dashboard</code> shows up here.
-      </div>
-    );
-  }
+  // Suppress the section if there's nothing to show — keeps the home page clean.
+  if (!configured || !videos.length) return null;
 
   return (
-    <div className="px-4">
-      <div className="flex gap-3 overflow-x-auto no-scrollbar -mx-1 px-1 pb-1">
+    <div className="text-white">
+      <div className="px-5 mb-2 label flex items-center gap-2">
+        <Video className="w-3.5 h-3.5" />
+        From Shane
+      </div>
+      <div className="px-4 flex gap-3 overflow-x-auto no-scrollbar pb-1">
         {videos.map((v) => (
           <VideoCard key={v.id} video={v} />
         ))}
@@ -78,7 +62,7 @@ export default function ShaneFeed() {
 function VideoCard({ video }: { video: ShaneVideo }) {
   const [playing, setPlaying] = useState(false);
   return (
-    <div className="shrink-0 w-64 sm:w-72 rounded-2xl overflow-hidden glass-strong border border-white/10">
+    <div className="shrink-0 w-60 rounded-2xl overflow-hidden card">
       <div className="relative aspect-[9/16] bg-black">
         <video
           src={video.url}
@@ -99,8 +83,8 @@ function VideoCard({ video }: { video: ShaneVideo }) {
             className="absolute inset-0 flex items-center justify-center"
             aria-label="Play video"
           >
-            <div className="w-14 h-14 rounded-full bg-white/85 text-ink-900 flex items-center justify-center shadow-2xl">
-              <span className="ml-1 border-y-[10px] border-y-transparent border-l-[16px] border-l-ink-900" />
+            <div className="w-14 h-14 rounded-full bg-white/90 text-[#0F1B2D] flex items-center justify-center shadow-2xl">
+              <span className="ml-1 border-y-[10px] border-y-transparent border-l-[16px] border-l-[#0F1B2D]" />
             </div>
           </button>
         )}
@@ -110,11 +94,11 @@ function VideoCard({ video }: { video: ShaneVideo }) {
           {video.title || "Stormin' Shane update"}
         </div>
         {video.caption && (
-          <div className="text-xs text-white/70 line-clamp-2 mt-0.5">
+          <div className="text-xs opacity-80 line-clamp-2 mt-0.5">
             {video.caption}
           </div>
         )}
-        <div className="text-[10px] text-white/40 mt-1">
+        <div className="text-[10px] opacity-65 mt-1">
           {new Date(video.postedAt).toLocaleString()}
         </div>
       </div>
